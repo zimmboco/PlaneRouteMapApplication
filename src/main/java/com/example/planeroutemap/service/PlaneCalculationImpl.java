@@ -1,10 +1,9 @@
 package com.example.planeroutemap.service;
 
+import static java.lang.Math.*;
 import static java.lang.Math.abs;
 import static java.lang.Math.atan;
 import static java.lang.Math.toDegrees;
-
-
 import com.example.planeroutemap.model.AirplaneCharacteristics;
 import com.example.planeroutemap.model.TemporaryPoint;
 import com.example.planeroutemap.model.WayPoint;
@@ -26,91 +25,148 @@ public class PlaneCalculationImpl implements PlaneCalculation {
                 0.0,
                 30.0);
         resultTemporaryPoints.add(firstPoint);
-        boolean flagByLatitude;
-        boolean flagByLongitude;
         int n = 0;
         for (int i = 0; i < wayPoints.size(); i++) {
-            flagByLatitude =
-                    wayPoints.get(i).latitude() >= resultTemporaryPoints.getLast().latitude();
-            flagByLongitude = wayPoints.get(i).longitude() >= resultTemporaryPoints.getLast().longitude();
             while (true) {
                 WayPoint nextPoint = wayPoints.get(i);
                 TemporaryPoint prevPoint = resultTemporaryPoints.getLast();
-                double flightHeightMeters = nextPoint.flightHeightMeters() >
-                        prevPoint.flightHeightMeters() ? prevPoint.flightHeightMeters() +
-                        characteristics.getHeightChangeRateMetersPerSecond() :
-                        prevPoint.flightHeightMeters() -
-                                characteristics.getHeightChangeRateMetersPerSecond();
+                final double flightHeightMeters =
+                        getFlightHeightMeters(characteristics, nextPoint, prevPoint);
 
-                double nextSpeed = prevPoint.flightSpeedInMetersPerSecond() +
-                        characteristics.getRateOfChangeOfSpeed();
+                final double nextSpeed = getNextSpeed(characteristics, prevPoint);
 
-                double flightSpeedInMetersPerSecond = nextSpeed >
-                        characteristics.getMaxSpeedMetersPerSecond() ?
-                        characteristics.getMaxSpeedMetersPerSecond() :
-                        nextSpeed;
+                double nextLat =
+                        getFormulaByLatitude(nextPoint, prevPoint,
+                                nextPoint.flightSpeedInMetersPerSecond());
+                double nextLon =
+                        getFormulaByLongitude(nextPoint, prevPoint, nextPoint.flightSpeedInMetersPerSecond());
 
-                double nextLatitude = prevPoint.latitude();
-                double nextLongitude = prevPoint.longitude();
-                double formulaByLatitude = nextLongitude == nextPoint.longitude() ?
-                        flightSpeedInMetersPerSecond : flightSpeedInMetersPerSecond *
-                        Math.sin(Math.toRadians(prevPoint.courseIsDegrees()));
-                double formulaByLongitude = nextLatitude == nextPoint.latitude() ?
-                        flightSpeedInMetersPerSecond : flightSpeedInMetersPerSecond *
-                        Math.cos(Math.toRadians(prevPoint.courseIsDegrees()));
 
-                if (nextLatitude + formulaByLatitude > nextPoint.latitude() && flagByLatitude) {
-                    nextLatitude = nextPoint.latitude();
-                } else if (nextLatitude + formulaByLatitude < nextPoint.latitude() && flagByLatitude) {
-                    nextLatitude += formulaByLatitude;
-                } else if (nextLatitude - formulaByLatitude > nextPoint.latitude() && !flagByLatitude) {
-                    nextLatitude -= formulaByLatitude;
-                } else {
-                    nextLatitude = nextPoint.latitude();
-                }
+                double targetDegrees = getTargetDegrees(nextPoint, prevPoint);
 
-                if (nextLongitude + formulaByLongitude > nextPoint.longitude() && flagByLongitude) {
-                    nextLongitude = nextPoint.longitude();
-                } else if (nextLongitude + formulaByLongitude < nextPoint.longitude() && flagByLongitude) {
-                    nextLongitude += formulaByLongitude;
-                } else if (nextLongitude - formulaByLongitude > nextPoint.longitude() && !flagByLongitude) {
-                    nextLongitude -= formulaByLongitude;
-                } else {
-                    nextLongitude = nextPoint.longitude();
-                }
-
-                double positionDegrees = prevPoint.courseIsDegrees();
-
-                double targetDegrees =
-                        getTargetOrientation(prevPoint.latitude(), prevPoint.longitude(),
-                                nextPoint.latitude(), nextPoint.longitude());
-
-                if (prevPoint.courseIsDegrees() < targetDegrees) {
-                    if (positionDegrees + characteristics.getRateOfChangeOfCourseDegreesPerSecond() >
-                            targetDegrees) {
-                        positionDegrees = targetDegrees;
-                    } else {
-                        positionDegrees += characteristics.getRateOfChangeOfCourseDegreesPerSecond();
-                    }
-                } else {
-                    positionDegrees = Math.max(
-                            positionDegrees - characteristics.getRateOfChangeOfCourseDegreesPerSecond(),
-                            targetDegrees);
-                }
-                TemporaryPoint temporaryPoint = new TemporaryPoint(nextLatitude,
-                        nextLongitude,
+                double positionDegrees = getPositionDegrees(characteristics, prevPoint, targetDegrees);
+                TemporaryPoint temporaryPoint = new TemporaryPoint(nextLat,
+                        nextLon,
                         flightHeightMeters,
-                        flightSpeedInMetersPerSecond,
+                        nextSpeed,
                         positionDegrees);
                 resultTemporaryPoints.add(temporaryPoint);
 
-                if (nextLatitude == nextPoint.latitude() && nextLongitude == nextPoint.longitude()) {
+
+                if (nextLat == nextPoint.latitude() && nextLon == nextPoint.longitude()) {
                     break;
                 }
-                n += 1;
             }
         }
         return resultTemporaryPoints;
+    }
+
+    private static double getPositionDegrees(AirplaneCharacteristics characteristics,
+                                             TemporaryPoint prevPoint, double targetDegrees) {
+        double courseIsDegrees = prevPoint.courseIsDegrees();
+        boolean flag;
+        if (abs(targetDegrees - courseIsDegrees) > 180) {
+            flag = true;
+        } else {
+            flag = false;
+        }
+        Double rateOfChangeOfCourseDegreesPerSecond =
+                characteristics.getRateOfChangeOfCourseDegreesPerSecond();
+        if (!flag) {
+            rateOfChangeOfCourseDegreesPerSecond *= -1;
+        }
+        if (abs(targetDegrees - courseIsDegrees) / abs(rateOfChangeOfCourseDegreesPerSecond) > 1) {
+            courseIsDegrees += rateOfChangeOfCourseDegreesPerSecond;
+        } else {
+            courseIsDegrees = targetDegrees;
+        }
+
+        return abs(courseIsDegrees % 360);
+    }
+
+    private double getTargetDegrees(WayPoint nextPoint, TemporaryPoint prevPoint) {
+        return getTargetOrientation(prevPoint.latitude(), prevPoint.longitude(),
+                nextPoint.latitude(), nextPoint.longitude());
+    }
+
+    private static double getFormulaByLongitude(WayPoint nextPoint, TemporaryPoint prevPoint,
+                                                double flightSpeedInMetersPerSecond) {
+        boolean flag;
+        double nextTemporaryPointLongitude = prevPoint.longitude();
+        double change = flightSpeedInMetersPerSecond *
+                cos(toRadians(prevPoint.courseIsDegrees()));
+        if (prevPoint.latitude() == nextPoint.latitude()) {
+            change = flightSpeedInMetersPerSecond;
+        }
+        if (nextPoint.longitude() > prevPoint.longitude()) {
+            flag = true;
+        } else {
+            flag = false;
+        }
+
+        if (nextPoint.longitude() <= prevPoint.longitude() + change && flag) {
+            nextTemporaryPointLongitude = nextPoint.longitude();
+        } else if (nextPoint.longitude() > prevPoint.longitude() + change && flag) {
+            nextTemporaryPointLongitude += change;
+        } else if (prevPoint.longitude() - change <= nextPoint.longitude()  && !flag) {
+            nextTemporaryPointLongitude = nextPoint.longitude();
+        } else if (prevPoint.longitude() > nextPoint.longitude() && !flag) {
+            nextTemporaryPointLongitude -= change;
+        }
+        return nextTemporaryPointLongitude;
+    }
+
+    private static double getFormulaByLatitude(WayPoint nextPoint, TemporaryPoint prevPoint,
+                                               double flightSpeedInMetersPerSecond) {
+        boolean flag;
+        double nextTemporaryPointLatitude = prevPoint.latitude();
+
+        double change = flightSpeedInMetersPerSecond *
+                sin(toRadians(prevPoint.courseIsDegrees()));
+        if (prevPoint.longitude() == nextPoint.longitude()) {
+            change = flightSpeedInMetersPerSecond;
+        }
+
+        if (nextPoint.latitude() > prevPoint.latitude()) {
+            flag = true;
+        } else {
+            flag = false;
+        }
+
+        if (nextPoint.latitude() <= prevPoint.latitude() + change && flag) {
+            nextTemporaryPointLatitude = nextPoint.latitude();
+        } else if (nextPoint.latitude() > prevPoint.latitude() + change && flag) {
+            nextTemporaryPointLatitude += change;
+        } else if (prevPoint.latitude() - change <= nextPoint.latitude()&& !flag) {
+            nextTemporaryPointLatitude = nextPoint.latitude();
+        } else if (prevPoint.latitude() - change > nextPoint.latitude() && !flag) {
+            nextTemporaryPointLatitude -= change;
+        }
+        return nextTemporaryPointLatitude;
+    }
+
+    private static double checkSpeedLimit(AirplaneCharacteristics characteristics,
+                                          double nextSpeed) {
+        return nextSpeed >
+                characteristics.getMaxSpeedMetersPerSecond() ?
+                characteristics.getMaxSpeedMetersPerSecond() :
+                nextSpeed;
+    }
+
+    private static double getNextSpeed(AirplaneCharacteristics characteristics,
+                                       TemporaryPoint prevPoint) {
+        double nextSpeed = prevPoint.flightSpeedInMetersPerSecond() +
+                characteristics.getRateOfChangeOfSpeed();
+        return checkSpeedLimit(characteristics, nextSpeed);
+    }
+
+    private static double getFlightHeightMeters(AirplaneCharacteristics characteristics,
+                                                WayPoint nextPoint, TemporaryPoint prevPoint) {
+        return nextPoint.flightHeightMeters() >
+                prevPoint.flightHeightMeters() ? prevPoint.flightHeightMeters() +
+                characteristics.getHeightChangeRateMetersPerSecond() :
+                prevPoint.flightHeightMeters() -
+                        characteristics.getHeightChangeRateMetersPerSecond();
     }
 
     private double getTargetOrientation(double currentLat, double currentLon, double targetLat, double targetLon) {
