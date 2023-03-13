@@ -17,34 +17,16 @@ public class AirplaneCharacteristics {
     private Double heightChangeRateMetersPerSecond;
     private Double rateOfChangeOfCourseDegreesPerSecond;
 
-    /**
-     * максимальная скорость метров в секунду
-     * @return
-     */
     public Double getMaxSpeedMetersPerSecond() {
         return maxSpeedMetersPerSecond;
     }
-
-    /**
-     * уровень набора скорости метров в секунду
-     * @return
-     */
     public Double getRateOfChangeOfSpeed() {
         return rateOfChangeOfSpeed;
     }
 
-    /**
-     * скорость набора высоты в метрах в секунду
-     * @return
-     */
     public Double getHeightChangeRateMetersPerSecond() {
         return heightChangeRateMetersPerSecond;
     }
-
-    /**
-     * скорость изменения напрвления градусов в секунду
-     * @return
-     */
     public Double getRateOfChangeOfCourseDegreesPerSecond() {
         return rateOfChangeOfCourseDegreesPerSecond;
     }

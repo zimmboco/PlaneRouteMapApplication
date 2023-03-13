@@ -32,7 +32,8 @@ public class PlaneController {
     @GetMapping
     public List<TemporaryPoint> calculateRoute() {
         initAirplane();
-        Airplane airplane = airplaneRepository.findAll().get(0);
+        List<Airplane> all = airplaneRepository.findAll();
+        Airplane airplane = all.get(all.size() - 1);
         Flight flight = airplane.getFlights().get(0);
         List<TemporaryPoint> temporaryPointList = planeCalculation.calculateRoute(airplane.getAirplaneCharacteristics(), flight.getWayPoints());
         flight.setTemporaryPoints(temporaryPointList);
@@ -44,8 +45,8 @@ public class PlaneController {
         Airplane airplane = new Airplane();
         WayPoint wayPoint = new WayPoint(100, 300,
                 2000.0, 20.0);
-        WayPoint wayPoint1 = new WayPoint(400, 500, 3000, 30);
-        WayPoint wayPoint2 = new WayPoint(500, 700, 1000, 10);
+        WayPoint wayPoint1 = new WayPoint(50, 400, 3000, 30);
+        WayPoint wayPoint2 = new WayPoint(300, 700, 1000, 10);
 
         List<WayPoint> wayPointList = List.of(wayPoint, wayPoint1, wayPoint2);
 
@@ -56,7 +57,7 @@ public class PlaneController {
                 0.0,
                 30.0);
 
-        AirplaneCharacteristics airplaneCharacteristics = new AirplaneCharacteristics(30.0, 10.0, 15.0, 5.0);
+        AirplaneCharacteristics airplaneCharacteristics = new AirplaneCharacteristics(30.0, 10.0, 15.0, 15.0);
         Flight flight = new Flight();
         flight.setNumber(1L);
         flight.setWayPoints(wayPointList);
