@@ -23,37 +23,28 @@ public class PlaneCalculationImpl implements PlaneCalculation {
                 600.0,
                 0.0,
                 0.0,
-                30.0);
+                180.0);
         resultTemporaryPoints.add(firstPoint);
-        int n = 0;
         for (int i = 0; i < wayPoints.size(); i++) {
             while (true) {
                 WayPoint nextPoint = wayPoints.get(i);
                 TemporaryPoint prevPoint = resultTemporaryPoints.getLast();
                 final double flightHeightMeters =
                         getFlightHeightMeters(characteristics, nextPoint, prevPoint);
-
                 final double nextSpeed = getNextSpeed(characteristics, prevPoint);
-
-                double nextLat =
-                        getFormulaByLatitude(nextPoint, prevPoint,
-                                nextPoint.flightSpeedInMetersPerSecond());
-                double nextLon =
-                        getFormulaByLongitude(nextPoint, prevPoint, nextPoint.flightSpeedInMetersPerSecond());
-
-
-                double targetDegrees = getTargetDegrees(nextPoint, prevPoint);
-
+                double targetDegrees = getTargetDegrees(nextPoint, prevPoint, resultTemporaryPoints.getLast().courseIsDegrees());
                 double positionDegrees = getPositionDegrees(characteristics, prevPoint, targetDegrees);
-                TemporaryPoint temporaryPoint = new TemporaryPoint(nextLat,
-                        nextLon,
+                double[] move =
+                        move(targetDegrees, nextSpeed, positionDegrees, prevPoint.latitude(),
+                                prevPoint.longitude(), nextPoint.latitude(), nextPoint.longitude());
+                TemporaryPoint temporaryPoint = new TemporaryPoint(move[0],
+                        move[1],
                         flightHeightMeters,
                         nextSpeed,
                         positionDegrees);
                 resultTemporaryPoints.add(temporaryPoint);
-
-
-                if (nextLat == nextPoint.latitude() && nextLon == nextPoint.longitude()) {
+                System.out.println(String.format("(%s, %s)", move[0], move[1]));
+                if (move[0] == nextPoint.latitude() && move[1] == nextPoint.longitude()) {
                     break;
                 }
             }
@@ -84,65 +75,9 @@ public class PlaneCalculationImpl implements PlaneCalculation {
         return abs(courseIsDegrees % 360);
     }
 
-    private double getTargetDegrees(WayPoint nextPoint, TemporaryPoint prevPoint) {
-        return getTargetOrientation(prevPoint.latitude(), prevPoint.longitude(),
-                nextPoint.latitude(), nextPoint.longitude());
-    }
-
-    private static double getFormulaByLongitude(WayPoint nextPoint, TemporaryPoint prevPoint,
-                                                double flightSpeedInMetersPerSecond) {
-        boolean flag;
-        double nextTemporaryPointLongitude = prevPoint.longitude();
-        double change = flightSpeedInMetersPerSecond *
-                cos(toRadians(prevPoint.courseIsDegrees()));
-        if (prevPoint.latitude() == nextPoint.latitude()) {
-            change = flightSpeedInMetersPerSecond;
-        }
-        if (nextPoint.longitude() > prevPoint.longitude()) {
-            flag = true;
-        } else {
-            flag = false;
-        }
-
-        if (nextPoint.longitude() <= prevPoint.longitude() + change && flag) {
-            nextTemporaryPointLongitude = nextPoint.longitude();
-        } else if (nextPoint.longitude() > prevPoint.longitude() + change && flag) {
-            nextTemporaryPointLongitude += change;
-        } else if (prevPoint.longitude() - change <= nextPoint.longitude()  && !flag) {
-            nextTemporaryPointLongitude = nextPoint.longitude();
-        } else if (prevPoint.longitude() > nextPoint.longitude() && !flag) {
-            nextTemporaryPointLongitude -= change;
-        }
-        return nextTemporaryPointLongitude;
-    }
-
-    private static double getFormulaByLatitude(WayPoint nextPoint, TemporaryPoint prevPoint,
-                                               double flightSpeedInMetersPerSecond) {
-        boolean flag;
-        double nextTemporaryPointLatitude = prevPoint.latitude();
-
-        double change = flightSpeedInMetersPerSecond *
-                sin(toRadians(prevPoint.courseIsDegrees()));
-        if (prevPoint.longitude() == nextPoint.longitude()) {
-            change = flightSpeedInMetersPerSecond;
-        }
-
-        if (nextPoint.latitude() > prevPoint.latitude()) {
-            flag = true;
-        } else {
-            flag = false;
-        }
-
-        if (nextPoint.latitude() <= prevPoint.latitude() + change && flag) {
-            nextTemporaryPointLatitude = nextPoint.latitude();
-        } else if (nextPoint.latitude() > prevPoint.latitude() + change && flag) {
-            nextTemporaryPointLatitude += change;
-        } else if (prevPoint.latitude() - change <= nextPoint.latitude()&& !flag) {
-            nextTemporaryPointLatitude = nextPoint.latitude();
-        } else if (prevPoint.latitude() - change > nextPoint.latitude() && !flag) {
-            nextTemporaryPointLatitude -= change;
-        }
-        return nextTemporaryPointLatitude;
+    private double getTargetDegrees(WayPoint nextPoint, TemporaryPoint prevPoint, double lastPoint) {
+        return getTarget(prevPoint.latitude(), prevPoint.longitude(),
+                nextPoint.latitude(), nextPoint.longitude(), lastPoint);
     }
 
     private static double checkSpeedLimit(AirplaneCharacteristics characteristics,
@@ -169,17 +104,50 @@ public class PlaneCalculationImpl implements PlaneCalculation {
                         characteristics.getHeightChangeRateMetersPerSecond();
     }
 
-    private double getTargetOrientation(double currentLat, double currentLon, double targetLat, double targetLon) {
-        var latDif = targetLat - currentLat;
-        var lonDif = targetLon - currentLon;
-        var extraDegrees = 0.0;
+    public static double getTarget(double currenLat, double currentLon, double targetLat, double targetLon, double angle) {
+        double latDif = targetLat - currenLat;
+        double lonDif = targetLon - currentLon;
+        double radianAngle = abs(toRadians(angle));
+        double rotatedLat = latDif * cos(radianAngle) + lonDif * sin(radianAngle);
+        double rotatedLon = - latDif * sin(radianAngle) + lonDif * cos(radianAngle);
+        return atan2(rotatedLon, rotatedLat);
 
-        if (lonDif < 0 && latDif < 0) extraDegrees += 180.0;
-        else if (latDif < 0) extraDegrees += 270.0;
-        else if (lonDif < 0) extraDegrees += 90.0;
+    }
 
-        double ratio = extraDegrees % 180 != 0 ? lonDif / latDif : latDif / lonDif;
-        var angle = toDegrees(atan(abs(ratio)));
-        return angle + extraDegrees;
+    public static double[] move(double direction, double speed, double angle, double currentLat, double currentLon,
+                                double targetLat, double targetLon) {
+        boolean flagByLat;
+        if (targetLat > currentLat) {
+            flagByLat = true;
+        } else {
+            flagByLat = false;
+        }
+        boolean flagByLon;
+        if (targetLon > currentLon) {
+            flagByLon = true;
+        } else {
+            flagByLon = false;
+        }
+        double radianAngle = Math.toRadians(angle);
+        double deltaX = speed * Math.cos(direction + radianAngle);
+        double deltaY = speed * Math.sin(direction + radianAngle);
+        double rotatedLat = deltaX * Math.cos(radianAngle) - deltaY * Math.sin(radianAngle);
+        double rotatedLon = deltaX * Math.sin(radianAngle) + deltaY * Math.cos(radianAngle);
+        double newLat = currentLat + rotatedLat;
+        double newLon = currentLon + rotatedLon;
+        if (newLat >= targetLat && flagByLat) {
+            newLat = targetLat;
+        }
+        if (newLat <= targetLat && !flagByLat) {
+            newLat = targetLat;
+        }
+
+        if (newLon >= targetLon && flagByLon) {
+            newLon = targetLon;
+        }
+        if (newLon <= targetLon && !flagByLon) {
+            newLon = targetLon;
+        }
+        return new double[] {newLat, newLon};
     }
 }
